@@ -65,7 +65,7 @@ def test_worker_block_is_not_auto_promoted_by_recompute_ready(kanban_home: Path)
         assert kb.block_task(
             conn, tid,
             reason="review-required: please verify ACL change",
-            expected_run_id=kb.get_task(conn, tid).current_run_id,
+            kind="needs_input", expected_run_id=kb.get_task(conn, tid).current_run_id,
         )
         assert kb.get_task(conn, tid).status == "blocked"
 
@@ -122,7 +122,7 @@ def test_protocol_violation_loop_is_broken(kanban_home: Path) -> None:
         kb.block_task(
             conn, tid,
             reason="review-required: human eyes please",
-            expected_run_id=kb.get_task(conn, tid).current_run_id,
+            kind="needs_input", expected_run_id=kb.get_task(conn, tid).current_run_id,
         )
         assert kb.get_task(conn, tid).status == "blocked"
 

@@ -3126,19 +3126,17 @@ def block_task(
     conn: sqlite3.Connection, task_id: str, *, reason: Optional[str] = None,
     kind: Optional[str] = None, expected_run_id: Optional[int] = None,
 ) -> bool:
-    """``running``/``ready`` -> ``blocked`` (or ``todo`` / ``triage``, see
-    :func:`_route_block`). ``kind='dependency'`` with no incomplete parent is
-    re-kinded to ``needs_input`` (sticky) so ``recompute_ready`` cannot
-    promote it into a context-free respawn. ``transient`` still counts
-    toward the loop breaker so a forever-flaky task escalates. True on any
-    transition.
+    """``running``/``ready`` -> ``blocked`` (or ``todo`` / ``triage``, see :func:`_route_block`).
+    ``kind='dependency'`` with no incomplete parent is re-kinded to ``needs_input`` (sticky) so
+    ``recompute_ready`` cannot promote it into a context-free respawn. ``transient`` still counts
+    toward the loop breaker so a forever-flaky task escalates. True on any transition. A caller
+    that owns the run (*expected_run_id*) must type the block of a ``running`` task
+    (``ValueError``, #158970); only an operator without run ownership may leave *kind* unset.
 
-    An already-``blocked`` card that the failure breaker parked UNTYPED
-    (``block_kind IS NULL``, no live run) is classified in place when *kind*
-    is supplied: ``block_kind``/``block_recurrences`` are set and a ``blocked``
-    audit event is appended, while status, failure evidence and the terminal
-    runs stay exactly as the breaker left them. A typed block, a card with a
-    live run, or a kind-less call on a blocked card are still refused.
+    An already-``blocked`` card that the failure breaker parked UNTYPED (``block_kind IS NULL``, no
+    live run) is classified in place when *kind* is supplied: ``block_kind``/``block_recurrences``
+    are set and a ``blocked`` audit event is appended, while status, failure evidence and the terminal
+    runs stay as the breaker left them; any other call on a blocked card is still refused.
     """
     if kind is not None and kind not in VALID_BLOCK_KINDS:
         raise ValueError(f"block kind must be one of {sorted(VALID_BLOCK_KINDS)} or None")
@@ -3148,6 +3146,8 @@ def block_task(
         ).fetchone()
         if cur_row is None:
             return False
+        if kind is None and expected_run_id is not None and cur_row["status"] == "running":
+            raise ValueError(f"a worker blocking its own run must pass kind, one of {sorted(VALID_BLOCK_KINDS)}")
         # The breaker (``_record_task_failure``) parks cards ``blocked`` with no
         # ``block_kind`` and no ``blocked`` event -- the policy is the
         # supervisor's, not the kernel's -- but the transition guard below only

@@ -198,3 +198,41 @@ def test_dependency_block_with_open_parent_stays_parked_across_dispatch_tick(
 # ---------------------------------------------------------------------------
 
 
+
+
+def _owned_run(conn):
+    """A fresh task claimed the way a dispatched worker holds it: ``(task_id, run_id)``."""
+    tid = kb.create_task(conn, title="owned", assignee="worker")
+    claimed = kb.claim_task(conn, tid, claimer="host:1")
+    assert claimed is not None and claimed.current_run_id is not None
+    return tid, claimed.current_run_id
+
+
+def test_run_owner_block_without_kind_is_refused(kanban_home: Path) -> None:
+    """Regression for #158970: a worker holding the live run cannot park its
+    task with no machine-readable kind; the task stays ``running``."""
+    with kbc.connect_closing() as conn:
+        tid, run_id = _owned_run(conn)
+        with pytest.raises(ValueError) as refused:
+            kb.block_task(conn, tid, reason="free text, no kind", kind=None, expected_run_id=run_id)
+        assert all(kind in str(refused.value) for kind in kb.VALID_BLOCK_KINDS)
+        task = kb.get_task(conn, tid)
+        assert (task.status, task.block_kind, task.current_run_id) == ("running", None, run_id)
+        assert "blocked" not in {e.kind for e in kb.list_events(conn, tid)}
+
+
+def test_operator_block_without_kind_still_allowed(kanban_home: Path) -> None:
+    """No run ownership (CLI / dashboard operator): the legacy untyped block is kept."""
+    with kbc.connect_closing() as conn:
+        tid, _run_id = _owned_run(conn)
+        assert kb.block_task(conn, tid, reason="operator parks it", kind=None)
+        task = kb.get_task(conn, tid)
+        assert (task.status, task.block_kind) == ("blocked", None)
+
+
+def test_run_owner_block_with_valid_kind_lands_typed(kanban_home: Path) -> None:
+    with kbc.connect_closing() as conn:
+        tid, run_id = _owned_run(conn)
+        assert kb.block_task(conn, tid, reason="need a decision", kind="needs_input", expected_run_id=run_id)
+        task = kb.get_task(conn, tid)
+        assert (task.status, task.block_kind, task.block_recurrences) == ("blocked", "needs_input", 1)

@@ -422,7 +422,7 @@ def test_complete_goal_mode_rejected_by_judge(monkeypatch, tmp_path):
 
 def test_block_happy_path(worker_env):
     from tools import kanban_tools as kt
-    out = kt._handle_block({"reason": "need clarification"})
+    out = kt._handle_block({"reason": "need clarification", "kind": "needs_input"})
     d = json.loads(out)
     assert d["ok"] is True
     from hermes_cli import kanban_db as kb
@@ -432,6 +432,17 @@ def test_block_happy_path(worker_env):
         assert kb.get_task(conn, worker_env).status == "blocked"
     finally:
         conn.close()
+
+
+def test_block_without_kind_refused_for_run_owner(worker_env):
+    """Regression for #158970: the worker that owns the run must type its block."""
+    from tools import kanban_tools as kt
+    from hermes_cli import kanban_db as kb
+    from hermes_cli import kanban_db_connect as kbc
+    d = json.loads(kt._handle_block({"reason": "need clarification"}))
+    assert all(kind in d["error"] for kind in kb.VALID_BLOCK_KINDS)
+    with kbc.connect_closing() as conn:
+        assert kb.get_task(conn, worker_env).status == "running"
 
 
 def test_schedule_parks_current_worker_with_reason(worker_env):

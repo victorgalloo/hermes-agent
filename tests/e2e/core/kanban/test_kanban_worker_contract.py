@@ -83,7 +83,7 @@ def test_declared_artifact_is_attached_or_reported(tmp_path, where: str) -> None
             # A refused completion is answered the way a careful worker would: park the card.
             if '"error"' in str(last.get("content")) and not blocked.get("sent"):
                 blocked["sent"] = True
-                return ToolCall("kanban_block", {"reason": "artifact could not be delivered"})
+                return ToolCall("kanban_block", {"reason": "artifact could not be delivered", "kind": "capability"})
             return Text("delivered")
         tid = _task_id(rec)
         path = _artifact_location(board_ref["b"], tid, where)

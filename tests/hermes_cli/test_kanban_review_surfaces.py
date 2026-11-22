@@ -393,7 +393,7 @@ def test_cli_and_dashboard_receive_graph_aware_deadlock_diagnostic(
             conn,
             parent_id,
             reason="review-required: ready",
-            expected_run_id=parent.current_run_id,
+            kind="needs_input", expected_run_id=parent.current_run_id,
         )
 
     payload = json.loads(kc.run_slash(f"diagnostics --task {parent_id} --json"))
