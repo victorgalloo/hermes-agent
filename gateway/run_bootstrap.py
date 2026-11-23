@@ -134,14 +134,37 @@ async def _start_gateway_replace_existing_instance(existing_pid: int, replace: b
     return True
 
 
-def _start_gateway_configure_logging(verbosity: Optional[int]) -> None:
-    """Sync bundled skills, set up file logging + startup security audit, and the -v/-q stderr handler."""
-    from gateway.run import (_best_effort, _gateway_stderr_formatter, _hermes_home, logging)
+# Startup wait for the optional skills sync; a stalled network skills dir must not hold the gateway.
+_SKILLS_SYNC_TIMEOUT_S = 15.0
+
+
+def _start_gateway_sync_skills(timeout_s: float) -> None:
+    """Run the bundled-skills sync on a daemon thread and wait at most ``timeout_s`` for it.
+
+    ``skills.external_dirs`` / ``skills.create_dir`` may sit on a network share whose stat or
+    resolve can stall for minutes; the sync is optional, so startup continues without it.
+    """
+    from agent.memory_provider import spawn_context_thread
+    from gateway.run import _best_effort
+
     def _sync_skills() -> None:
         from tools.skills_sync import sync_skills
         sync_skills(quiet=True)
 
-    _best_effort(_sync_skills)
+    # Under the caller's profile scope: the sync resolves this gateway's skills dirs through it.
+    worker = spawn_context_thread(_best_effort, args=(_sync_skills,), name="gateway-skills-sync")
+    worker.start()
+    worker.join(timeout_s)
+    if worker.is_alive():
+        logger.warning(
+            "Skills sync still running after %.0fs (slow skills.external_dirs or skills.create_dir?); "
+            "continuing gateway startup while it finishes in the background.", timeout_s)
+
+
+def _start_gateway_configure_logging(verbosity: Optional[int]) -> None:
+    """Sync bundled skills, set up file logging + startup security audit, and the -v/-q stderr handler."""
+    from gateway.run import (_best_effort, _gateway_stderr_formatter, _hermes_home, logging)
+    _start_gateway_sync_skills(_SKILLS_SYNC_TIMEOUT_S)
 
     # Centralized logging (agent.log INFO+, errors.log WARNING+, gateway.log gateway-only); idempotent.
     from hermes_logging import setup_logging, _safe_stderr
