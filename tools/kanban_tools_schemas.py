@@ -192,7 +192,7 @@ KANBAN_BLOCK_SCHEMA = _schema(
                 "Why you're blocked. 'dependency' waits in todo and "
                 "resumes automatically when an incomplete parent finishes; "
                 "if no parent is open it is recorded as needs_input instead. "
-                "The others surface to a human. Omit only if none apply."
+                "The others surface to a human. Required to block your own task."
             ),
         },
     },

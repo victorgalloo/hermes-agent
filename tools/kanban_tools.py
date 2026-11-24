@@ -835,7 +835,7 @@ def _handle_block(args: dict, **kw) -> str:
     kind = args.get("kind")
     with _board(args.get("board")) as (kb, conn):
         _check(kind is None or kind in kb.VALID_BLOCK_KINDS,
-               f"kind must be one of {sorted(kb.VALID_BLOCK_KINDS)} (or omit it)")
+               f"kind must be one of {sorted(kb.VALID_BLOCK_KINDS)}")
         # The goal loop treats ANY blocked status as terminal, so kanban_block
         # would be an escape hatch around the completion judge: goal_mode tasks
         # may only block on genuine external blockers.
@@ -852,7 +852,10 @@ def _handle_block(args: dict, **kw) -> str:
                f"{sorted(_GOAL_MODE_BLOCK_ALLOWED_KINDS)} (got {kind!r}). If the task is actually "
                f"finished or cannot proceed for another reason, call kanban_complete instead — "
                f"the completion judge will evaluate it.")
-        ok = kb.block_task(conn, tid, reason=reason, kind=kind, expected_run_id=_worker_run_id(tid))
+        run_id = _worker_run_id(tid)
+        _check(kind is not None or run_id is None,
+               f"kind is required to block your own task: one of {sorted(kb.VALID_BLOCK_KINDS)}")
+        ok = kb.block_task(conn, tid, reason=reason, kind=kind, expected_run_id=run_id)
         _check(ok, f"could not block {tid} (unknown id or not in running/ready)")
         landed_kind = kb.get_task(conn, tid).block_kind
         extra: dict = {"block_kind": landed_kind}
