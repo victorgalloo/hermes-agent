@@ -122,7 +122,7 @@ def apply_action(holder, conn, session_id, operation, payload, *, prepared=None,
         return handlers[operation](holder, conn, session_id, payload)
     from ..conversation._store.compression import _compression_tip_on
     from ..conversation._store.sessions import _LINEAGE_CTE_SQL, _set_lineage_column_in_transaction
-    from ..conversation._store.titles import _retire_canonical_bot_chat_in_transaction, _set_session_title_in_transaction, sanitize_title
+    from ..conversation._store.titles import _retire_canonical_bot_chat_in_transaction, sanitize_title
     affected = set()
     result = {}
     for key, value in payload.items():
@@ -132,7 +132,7 @@ def apply_action(holder, conn, session_id, operation, payload, *, prepared=None,
             # that tip, so a committed rename advances the whole lineage's revision, as the
             # lineage-wide flags below do: a client holding any segment's older copy refuses.
             tip = _compression_tip_on(holder, conn, session_id)
-            written = _set_session_title_in_transaction(holder, conn, tip, value, source=TITLE_SOURCE_USER)
+            written = _write_user_title(holder, conn, tip, value)
             # A row the uniqueness rule freed the name from (an empty chat, a retired Bot Chat) changed too.
             affected.update(written)
             if written:
@@ -143,8 +143,7 @@ def apply_action(holder, conn, session_id, operation, payload, *, prepared=None,
                     # An untitled tip lists under an ancestor's title, so a clear clears the lineage,
                     # each row through the same title rules (the canonical Bot Chat's name refuses).
                     for sid in lineage:
-                        affected.update(_set_session_title_in_transaction(
-                            holder, conn, sid, value, source=TITLE_SOURCE_USER))
+                        affected.update(_write_user_title(holder, conn, sid, value))
             result[key] = conn.execute('SELECT title FROM sessions WHERE id=?', (tip,)).fetchone()[0]
         else:
             column = 'last_read_at' if key == 'unread' else key
@@ -155,6 +154,15 @@ def apply_action(holder, conn, session_id, operation, payload, *, prepared=None,
                 affected.update(_retire_canonical_bot_chat_in_transaction(holder, conn, session_id))
             result[key] = value
     return affected, result
+
+
+def _write_user_title(holder, conn, session_id, title):
+    from ..conversation._store.titles import _set_session_title_in_transaction
+
+    try:
+        return _set_session_title_in_transaction(holder, conn, session_id, title, source=TITLE_SOURCE_USER)
+    except ValueError as exc:
+        raise AuthorityRefusal('invalid_params', field='title', detail=str(exc)) from exc
 
 
 def _delete(holder, conn, session_id, payload, *, media_root, owner):

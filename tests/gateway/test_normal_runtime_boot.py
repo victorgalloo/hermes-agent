@@ -110,6 +110,15 @@ async def handshake(home, descriptor):
                 'payload': {'title': 'Shared metadata receipt'}}
         renamed = await rpc(viewer, 'session.mutate', **edit)
         assert renamed['title'] == edit['payload']['title'], renamed
+        second = await rpc(viewer, 'session.create', request_id='second-chat', source='cli')
+        second_id = second['session_id']
+        second_snapshot = await rpc(viewer, 'session.resume', session_id=second_id)
+        detail = f"Title '{renamed['title']}' is already in use by session {sid}"
+        refused = await rpc(viewer, 'session.mutate', expected_error=detail, session_id=second_id,
+                            request_id='taken-title', expected_revision=second_snapshot['revision'],
+                            operation='rename', payload=edit['payload'])
+        assert refused == {'code': 4001, 'message': detail,
+                           'data': {'reason': 'invalid_params', 'field': 'title', 'detail': detail}}
     reconnect = control(home, 'session-ticket', binding)
     async with connect(url, subprotocols=['hermes-gateway-v1',
                                         'hermes-gateway-ticket.' + reconnect['ticket']]) as viewer:

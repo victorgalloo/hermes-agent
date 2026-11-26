@@ -114,6 +114,9 @@ def test_clearing_through_a_canonical_bot_chat_ancestor_keeps_its_name(db):
     epoch = _compressed(db, root_title=CANONICAL_BOT_CHAT_TITLE)
     db.sessions.set_hidden("chat", True)
     db.sessions.set_title("chat-2", "")  # the rotation's title copy never happened
-    with pytest.raises(ValueError, match="canonical Bot Chat"):
+    with pytest.raises(AuthorityRefusal) as refused:
         _rename(db, epoch, "chat", "", "b1")
+    assert refused.value.reason == "invalid_params"
+    assert refused.value.field == "title"
+    assert "canonical Bot Chat" in refused.value.detail
     assert db.sessions.resolve_by_title(CANONICAL_BOT_CHAT_TITLE) is not None

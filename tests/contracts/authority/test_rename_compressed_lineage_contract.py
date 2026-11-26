@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from persistence import CapabilityUnsupported, FenceStale, StaleFenceKind
+from persistence import AuthorityRefusal, CapabilityUnsupported, FenceStale, StaleFenceKind
 from persistence.authority import runtime as rt
 from persistence.authority.bindings import local_session_id
 from persistence.conversation.sessions import CANONICAL_BOT_CHAT_TITLE, END_REASON_COMPRESSION, NewSession, SessionQuery, TitleSource
@@ -99,8 +99,11 @@ def test_clearing_through_a_canonical_bot_chat_ancestor_keeps_its_name(backend, 
     store.sessions.set_hidden("chat", True)
     store.sessions.set_title("chat-2", "")
     # CONTRACT: the lineage clear writes each row under the title rules, so the hidden canonical Bot Chat's name refuses and nothing commits.
-    with pytest.raises(ValueError, match="canonical Bot Chat"):
+    with pytest.raises(AuthorityRefusal) as refused:
         _rename(store, epoch, "chat", "", "b1")
+    assert refused.value.reason == "invalid_params"
+    assert refused.value.field == "title"
+    assert "canonical Bot Chat" in refused.value.detail
     assert store.sessions.get_by_title(CANONICAL_BOT_CHAT_TITLE) is not None
 
 

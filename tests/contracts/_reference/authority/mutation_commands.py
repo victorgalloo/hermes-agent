@@ -39,6 +39,13 @@ def _ctx(repo: Any) -> tuple[Any, dict[str, Any], dict[str, Any]]:
     return repo._backend, repo._state().snapshot, repo._tables()
 
 
+def _write_user_title(store: Any, session_id: str, title: str) -> list[str]:
+    try:
+        return store.sessions._write_title(store.scope, SessionId(session_id), title, TitleSource.USER)
+    except ValueError as exc:
+        raise AuthorityRefusal("invalid_params", field="title", detail=str(exc)) from exc
+
+
 def _metadata(repo: Any, session_id: str, payload: Mapping[str, Any]) -> tuple[set[str], dict[str, Any]]:
     store = repo._backend
     affected: set[str] = set()
@@ -48,7 +55,7 @@ def _metadata(repo: Any, session_id: str, payload: Mapping[str, Any]) -> tuple[s
             # The listing shows a compressed conversation under its live tip's title, so the rename lands there; every
             # segment can rename that tip, so a committed write advances the whole lineage's revision.
             tip = compression_tip(store, store.scope, session_id)
-            written = store.sessions._write_title(store.scope, SessionId(tip), value, TitleSource.USER)
+            written = _write_user_title(store, tip, value)
             affected.update(written)
             if written:
                 lineage = store.sessions._lineage_ids(repo._tables()["sessions"], session_id)
@@ -57,7 +64,7 @@ def _metadata(repo: Any, session_id: str, payload: Mapping[str, Any]) -> tuple[s
                     # An untitled tip lists under an ancestor's title, so a clear clears the lineage, each row through
                     # the same title rules (the canonical Bot Chat's name refuses).
                     for sid in lineage:
-                        affected.update(store.sessions._write_title(store.scope, SessionId(sid), value, TitleSource.USER))
+                        affected.update(_write_user_title(store, sid, value))
             result[key] = repo._tables()["sessions"][tip]["title"]
             continue
         column = "last_read_at" if key == "unread" else key
