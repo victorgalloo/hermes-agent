@@ -10,8 +10,10 @@ from typing import Any
 
 import pytest
 
+from persistence import AuthorityRefusal
 from persistence.authority import runtime as rt
 from persistence.authority.bindings import local_session_id
+from persistence.conversation.sessions import MAX_TITLE_LENGTH
 from tests.persistence_sqlite.authority._support import counted_transactions
 from tests.persistence_sqlite.authority.test_binding_local import make_binding, reserved
 from tests.persistence_sqlite.authority.test_binding_local import seed as seed_store
@@ -50,12 +52,37 @@ def transcript(session_id: str = "s-plain"):
 
 
 def test_a_value_that_is_no_command_refuses_invalid_params(store):
-    from persistence import AuthorityRefusal
-
     seed_store(store, plain())
     for command in (SimpleNamespace(operation="sidebar", payload=lambda: {"color": "red"}), "sidebar", None):
         with pytest.raises(AuthorityRefusal, match="^invalid_params$"):
             mutate(store, command, session_id="s-plain")
+
+
+def test_sidebar_rename_to_a_taken_title_refuses_without_changing_either_session(store):
+    seed_store(store, transcript(), transcript("title-holder"))
+    store.sessions.set_title("s-plain", "Original")
+    store.sessions.set_title("title-holder", "Taken")
+
+    with pytest.raises(AuthorityRefusal) as refused:
+        mutate(store, rt.Sidebar(title="Taken"), session_id="s-plain")
+
+    assert refused.value.reason == "invalid_params"
+    assert refused.value.field == "title"
+    assert refused.value.detail == "Title 'Taken' is already in use by session title-holder"
+    assert store.sessions.get("s-plain").title == "Original"
+    assert store.sessions.get("title-holder").title == "Taken"
+
+
+def test_rename_to_an_overlong_title_refuses_with_the_length_limit(store):
+    seed_store(store, plain())
+
+    with pytest.raises(AuthorityRefusal) as refused:
+        mutate(store, rt.Rename("x" * (MAX_TITLE_LENGTH + 1)), session_id="s-plain")
+
+    assert refused.value.reason == "invalid_params"
+    assert refused.value.field == "title"
+    assert "Title too long" in refused.value.detail
+    assert f"max {MAX_TITLE_LENGTH}" in refused.value.detail
 
 
 # ── branch route profile ──────────────────────────────────────────────────────

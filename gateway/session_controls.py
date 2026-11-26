@@ -934,6 +934,8 @@ class AuthorityConnection:
                 row = await asyncio.to_thread(authority_persistence(self.authority).sessions.get, ref.session_id)
                 if row is not None:
                     exc.revision, exc.execution_generation = row.runtime_revision, row.runtime_generation
+            if exc.reason == 'invalid_params' and exc.field == 'title' and exc.detail:
+                exc.wire_message = exc.detail
             raise
         # The branching viewer navigates straight into its new child; attach it
         # here (create parity) so the first submit is not refused as a stranger.
