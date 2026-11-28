@@ -193,6 +193,38 @@ class TestCapabilityProbe:
         assert "terminal" in joined
         assert "built-in" in joined
 
+    _FEISHU_TOOLS = ["feishu_doc_read", "feishu_drive_list_comments", "feishu_drive_list_comment_replies",
+                     "feishu_drive_reply_comment", "feishu_drive_add_comment"]
+
+    def test_platform_plugin_may_declare_its_bundled_platform_tools(self, tmp_path):
+        """A platform plugin taking over a platform core still bundles declares that platform's own
+        ``hermes-<platform>`` tools while it stands down on this core, so the same manifest serves the
+        core that drops the platform. Anything else it declares, or registers, still collides."""
+        manifest = dict(BASE_MANIFEST, name="feishu", kind="platform", provides_tools=self._FEISHU_TOOLS)
+        report = validate_plugin_dir(_make_plugin(tmp_path / "ok", manifest=manifest))
+        assert report.ok, report.failures
+
+        foreign = dict(manifest, provides_tools=[*self._FEISHU_TOOLS, "terminal"])
+        report = validate_plugin_dir(_make_plugin(tmp_path / "foreign", manifest=foreign))
+        assert not report.ok
+        assert "terminal" in " ".join(report.failures)
+        assert "feishu_doc_read" not in " ".join(report.failures)
+
+        registers = "def register(ctx):\n    ctx.register_tool('feishu_doc_read', 'x', {}, lambda a: '')\n"
+        report = validate_plugin_dir(_make_plugin(tmp_path / "shadows", manifest=manifest, init_py=registers))
+        assert not report.ok
+        assert "feishu_doc_read" in " ".join(report.failures)
+
+    @pytest.mark.parametrize("manifest", [
+        dict(BASE_MANIFEST, name="feishu", provides_tools=["feishu_doc_read"]),  # not a platform plugin
+        dict(BASE_MANIFEST, name="fixture-chat", kind="platform", provides_tools=["feishu_doc_read"]),
+        dict(BASE_MANIFEST, name="telegram", kind="platform", provides_tools=["feishu_doc_read"]),
+    ])
+    def test_other_plugins_declaring_platform_tools_still_collide(self, tmp_path, manifest):
+        report = validate_plugin_dir(_make_plugin(tmp_path, manifest=manifest))
+        assert not report.ok
+        assert "feishu_doc_read" in " ".join(report.failures)
+
     def test_probe_context_returns_get_config_defaults(self, tmp_path):
         """Real PluginContext.get_config yields the default when nothing is configured; the probe must
         too, or every plugin doing ``int(ctx.get_config("timeout", 180))`` fails admission."""
@@ -258,6 +290,39 @@ class TestCapabilityProbe:
         )
         report = validate_plugin_dir(d)
         assert report.ok, report.failures
+
+
+class TestExclusiveProviderProbe:
+    """Computer-use and cron-scheduler plugins register through their family's collector, not
+    PluginContext; the probe must accept that registrar and still refuse a misspelt one."""
+
+    @pytest.mark.parametrize("base,registrar", [
+        ("from tools.computer_use.backend import ComputerUseProvider as Base\n"
+         "class Provider(Base):\n"
+         "    name = 'fixture'\n"
+         "    def create_backend(self, *, permission_mode):\n"
+         "        raise NotImplementedError\n", "register_computer_use_provider"),
+        ("class Provider:\n    name = 'fixture'\n", "register_cron_scheduler"),
+    ])
+    def test_family_registrar_passes(self, tmp_path, base, registrar):
+        d = _make_plugin(
+            tmp_path,
+            manifest={**BASE_MANIFEST, "kind": "exclusive"},
+            init_py=base + f"def register(ctx):\n    ctx.{registrar}(Provider())\n",
+        )
+        report = validate_plugin_dir(d)
+        assert report.ok, report.failures
+        assert ("capability probe", True, "register() ran in isolation") in report.checks
+
+    def test_unknown_context_method_still_fails(self, tmp_path):
+        d = _make_plugin(
+            tmp_path,
+            manifest={**BASE_MANIFEST, "kind": "exclusive"},
+            init_py="def register(ctx):\n    ctx.register_computer_use_providre(object())\n",
+        )
+        report = validate_plugin_dir(d)
+        assert not report.ok
+        assert any("register() raised:" in f and "register_computer_use_providre" in f for f in report.failures)
 
 
 class TestModelProviderKind:

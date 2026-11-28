@@ -222,7 +222,7 @@ install()
 plugin_dir = sys.argv[1]
 sentinel = sys.argv[2]
 options = json.loads(sys.argv[3])
-# Public method names of the real PluginContext, computed by the parent so the
+# Public method names of the real contexts, computed by the parent so the
 # stub's attribute surface cannot drift from the class plugins run against.
 context_methods = set(options["context_methods"])
 # Service properties (``ctx.llm``, ``ctx.state``, ...): plugins capture them in register() and
@@ -265,7 +265,7 @@ class RecordingContext:
     def __getattr__(self, name):
         # Any other REAL registration surface (platforms, providers, skills,
         # context engines, ...) is accepted as a no-op — the probe only audits
-        # the declared-capability categories. Names the real PluginContext does
+        # the declared-capability categories. Names the real contexts do
         # not have raise AttributeError exactly like it would; handing back a
         # callable made `getattr(ctx, "profile_path", None)` truthy and crashed
         # register() in the probe alone.
@@ -372,11 +372,18 @@ emit(recorded)
 
 def _probe_options(manifest: dict) -> dict:
     from hermes_cli.plugins import PluginContext
+    from plugins.computer_use import _ProviderCollector as ComputerUseCollector
+    from plugins.cron_providers import _ProviderCollector as CronCollector
 
     public = [n for n in dir(PluginContext) if not n.startswith("_")]
     return {
         "kind": str(manifest.get("kind") or ""),
-        "context_methods": sorted(n for n in public if callable(getattr(PluginContext, n))),
+        # Exclusive computer-use and cron-scheduler plugins are loaded with their family's collector,
+        # not PluginContext, so its registrar is part of the surface they run against.
+        "context_methods": sorted({
+            n for context in (PluginContext, ComputerUseCollector, CronCollector) for n in dir(context)
+            if not n.startswith("_") and callable(getattr(context, n))
+        }),
         "context_properties": sorted(
             n for n in public if isinstance(getattr(PluginContext, n), (property, cached_property))
         ),
@@ -518,6 +525,24 @@ def _builtin_tool_names() -> list[str]:
         return []
 
 
+def _bundled_platform_tools(manifest: dict) -> set[str]:
+    """Tools a platform plugin may declare though core ships them: the platform's own extras in its
+    ``hermes-<platform>`` toolset, when core still bundles that platform. Such a plugin takes the
+    platform over and stands down on a core that ships it, so one manifest (declaring the tools the
+    loader needs to register them once core drops the platform) must pass on both cores. The shared
+    core tools in the bundle stay refused."""
+    name = str(manifest.get("name") or "").strip().lower()
+    if manifest.get("kind") != "platform" or not name:
+        return set()
+    from gateway.platform_registry import core_ships_platform
+    from toolsets import _HERMES_CORE_TOOLS, TOOLSETS
+
+    bundle = TOOLSETS.get(f"hermes-{name}")
+    if bundle is None or not core_ships_platform(name):
+        return set()
+    return set(bundle["tools"]) - set(_HERMES_CORE_TOOLS)
+
+
 def _check_builtin_collisions(
     report: ValidationReport, manifest: dict, recorded: Optional[dict]
 ) -> None:
@@ -528,7 +553,10 @@ def _check_builtin_collisions(
         report.add("built-in tool collisions", True, "no tools to check")
         return
     builtin = set(_builtin_tool_names())
-    collisions = sorted(candidate_tools & builtin)
+    # Registering one on this core would still shadow the built-in, so only declared names are exempt.
+    handed_over = candidate_tools & builtin & (
+        _bundled_platform_tools(manifest) - set((recorded or {}).get("tools") or []))
+    collisions = sorted((candidate_tools & builtin) - handed_over)
     if collisions:
         report.add(
             "built-in tool collisions",
@@ -536,6 +564,9 @@ def _check_builtin_collisions(
             "tool name(s) collide with built-in tools: "
             f"{', '.join(collisions)}",
         )
+    elif handed_over:
+        report.add("built-in tool collisions", True,
+                   f"declares {', '.join(sorted(handed_over))} of the bundled platform it takes over")
     else:
         report.add("built-in tool collisions", True, "no collisions")
 

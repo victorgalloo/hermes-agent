@@ -51,9 +51,9 @@ def convert_base64_images_to_links(text: str) -> str:
     def _md_repl(m: re.Match[str]) -> str:
         return f"[IMAGE: {alt}]" if (alt := (m.group("alt") or "").strip()) else "[IMAGE]"
 
-    out = re.sub(r"!\[(?P<alt>[^\]]*)\]\(\s*data:image/[^;]+;base64,[A-Za-z0-9+/=\s]+\)", _md_repl, text)
-    out = re.sub(r"\(\s*data:image/[^;]+;base64,[A-Za-z0-9+/=\s]+\)", "[IMAGE]", out)
-    return re.sub(r"data:image/[^;]+;base64,[A-Za-z0-9+/=]+", "[IMAGE]", out)
+    out = re.sub(r"!\[(?P<alt>[^\[\]]*)\]\(\s*data:image/[\w.+-]+;base64,[A-Za-z0-9+/=\s]+\)", _md_repl, text)
+    out = re.sub(r"\(\s*data:image/[\w.+-]+;base64,[A-Za-z0-9+/=\s]+\)", "[IMAGE]", out)
+    return re.sub(r"data:image/[\w.+-]+;base64,[A-Za-z0-9+/=]+", "[IMAGE]", out)
 
 
 def _store_full_text(url: str, content: str) -> Optional[str]:

@@ -619,6 +619,7 @@ hermes backup [options]
 
 - `*.db-wal`、`*.db-shm`、`*.db-journal` — SQLite 的 WAL/共享内存/日志附属文件。`*.db` 文件已通过 `sqlite3.backup()` 获得一致快照；将活跃附属文件一并打包会导致恢复时看到半提交状态。
 - `checkpoints/` — 每会话轨迹缓存。以 hash 为键，每次会话重新生成；无论如何都无法干净地移植到其他安装。
+- `~/.hermes` 根目录下的 `portal-recovery/` 和 `lost+found/` — 宿主自己的状态（Hermes Cloud 的恢复快照，agent 往往无权读取；以及卷的 `lost+found/`）。`hermes import` 会跳过旧归档中仍带有的这些内容。skill 或命名 profile 中的同名文件夹会保留。
 - `hermes-agent` 代码本身（这是用户数据备份，不是仓库快照）。
 
 ### 示例
@@ -949,7 +950,7 @@ hermes hooks <subcommand>
 hermes memory <subcommand>
 ```
 
-设置和管理外部 memory provider plugin。可用 provider：honcho、openviking、mem0、hindsight、holographic、retaindb、byterover、supermemory。同一时间只能有一个外部 provider 处于活跃状态。内置 memory（MEMORY.md/USER.md）始终处于活跃状态。
+设置和管理外部 memory provider plugin。可用 provider：honcho、openviking、mem0、hindsight、holographic、supermemory。同一时间只能有一个外部 provider 处于活跃状态。内置 memory（MEMORY.md/USER.md）始终处于活跃状态。
 
 子命令：
 

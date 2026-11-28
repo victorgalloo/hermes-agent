@@ -14,13 +14,15 @@ import time
 import pytest
 from websockets.asyncio.client import connect
 from websockets.exceptions import InvalidStatus
+from tests.fixtures.child_env import hermes_child_env
 
 
 @pytest.mark.asyncio
 async def test_authenticated_token_can_create_without_identityless_permissions(tmp_path):
     from gateway.config import GatewayConfig
     from gateway.run import GatewayRunner
-    from gateway.run_runtime import initialize_gateway_runtime, start_gateway_runtime_api, publish_gateway_runtime_ready
+    from gateway.run_runtime import initialize_gateway_runtime, publish_gateway_runtime_ready
+    from gateway.run_runtime_listener import start_gateway_runtime_api
     from gateway.runtime_ownership import process_ownership
     from gateway.session_controls import AuthorityConnection
     from hermes_constants import get_hermes_home
@@ -111,7 +113,7 @@ def test_ordinary_daemon_keeps_control_auth_and_loop_witness(tmp_path, layout):
         }))
         root = Path(__file__).resolve().parents[2]
         token = secrets.token_urlsafe(32)
-        env = {key: os.environ[key] for key in ('PATH', 'LANG', 'TZ') if key in os.environ}
+        env = hermes_child_env(('PATH', 'LANG', 'TZ'))
         env.update(HOME=str(user), USERPROFILE=str(user), HERMES_HOME=str(home),
                    PYTHONPATH=str(root), PYTHONUNBUFFERED='1', HERMES_DASHBOARD_SESSION_TOKEN=token)
         if layout == 'long-temp':

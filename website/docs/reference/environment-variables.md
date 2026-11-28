@@ -185,11 +185,11 @@ For native Anthropic auth, Hermes prefers Claude Code's own credential files whe
 | `MEM0_HOST` | Base URL of a self-hosted Mem0 server (switches the plugin off the Platform API) |
 | `MEM0_USER_ID` | Override the user id Mem0 memories are stored under |
 | `MEM0_AGENT_ID` | Override the agent id Mem0 memories are tagged with |
-| `RETAINDB_API_KEY` | RetainDB API key for persistent memory ([retaindb.com](https://retaindb.com)) |
-| `RETAINDB_BASE_URL` | Base URL for self-hosted RetainDB instances (default: `https://api.retaindb.com`) |
+| `RETAINDB_API_KEY` | RetainDB API key, read by the [`retaindb` Hermes Labs plugin](https://github.com/NousResearch/hermes-labs-plugins/tree/main/retaindb) ([retaindb.com](https://retaindb.com)) |
+| `RETAINDB_BASE_URL` | Base URL for self-hosted RetainDB instances (default: `https://api.retaindb.com`), read by the `retaindb` plugin |
 | `OPENVIKING_API_KEY` | OpenViking API key (leave blank for local dev mode) |
 | `OPENVIKING_ENDPOINT` | OpenViking server URL (default: `http://127.0.0.1:1933`) |
-| `BRV_API_KEY` | ByteRover API key (optional, for cloud sync — local-first by default) ([app.byterover.dev](https://app.byterover.dev)) |
+| `BRV_API_KEY` | ByteRover cloud-sync key (optional, local-first by default), read by the [`byterover` Hermes Labs plugin](https://github.com/NousResearch/hermes-labs-plugins/tree/main/byterover) |
 | `SUPERMEMORY_API_KEY` | Semantic long-term memory with profile recall and session ingest ([supermemory.ai](https://supermemory.ai)) |
 | `DAYTONA_API_KEY` | Daytona cloud sandboxes ([daytona.io](https://daytona.io/)) |
 | `SPRITES_TOKEN` | Sprites cloud sandboxes, read by the [`sprites` plugin](https://github.com/NousResearch/hermes-plugin-sprites) ([fly.io/sprites](https://fly.io/sprites)) |
@@ -859,6 +859,7 @@ Advanced per-platform knobs for throttling the outbound message batcher. Most us
 | `HERMES_REDACT_SECRETS` | `true`/`false` — control secret redaction in tool output, logs, and chat responses (default: `true`). |
 | `HERMES_WRITE_SAFE_ROOT` | Optional directory prefix that **hard-blocks** `write_file`/`patch` writes outside the listed roots (no approval prompt). Supports multiple directories separated by `os.pathsep` (`:` on Unix, `;` on Windows). See [HERMES_WRITE_SAFE_ROOT](#hermes_write_safe_root) below. |
 | `HERMES_DISABLE_LAZY_INSTALLS` | Internal PM policy used by tests and install probes. Truthy values refuse on-demand installation. It overrides the user-facing `security.allow_lazy_installs` setting. Do not put it in `.env`. |
+| `HERMES_INSTALL_STATE_DIR` | Set by a launcher that starts Hermes on an interpreter it prepared, for that process and its children: the absolute path of a folder that stands in for `installs/<key>` in the Hermes data folder. Later locks and markers go there. Hermes reads nothing from it at start: the process is not restarted, repairs nothing and selects no recorded dependency environment (a sealed install still uses the environment it ships). `hermes pm install --extra`, `hermes pm repair` and every other command that would build a dependency environment are refused in such a process. The launcher keeps the interpreter's environment in place while the process runs: a Hermes process that runs on one of the install's environments holds its lease, and a launcher that is not one uses an interpreter it controls. Launch-only: a value in `.env` or from a secret source is ignored. A sandbox launcher uses it where the install's own state can be seen but neither read nor locked. |
 | `HERMES_DISABLE_FILE_STATE_GUARD` | Set to `1` to turn off the "file changed since you read it" guard on `patch`/`write_file`. |
 | `HERMES_BUNDLED_SKILLS` | Comma-separated override for the list of bundled skills loaded at startup. |
 | `HERMES_OPTIONAL_SKILLS` | Comma-separated list of optional-skill names to auto-install on first run. |
@@ -868,7 +869,7 @@ Advanced per-platform knobs for throttling the outbound message batcher. Most us
 | `HERMES_OAUTH_TRACE` | Set to `1` to log OAuth token exchange and refresh attempts. Includes redacted timing info. |
 | `HERMES_AGENT_HELP_GUIDANCE` | Append additional guidance text to the system prompt for custom deployments. |
 | `HERMES_AGENT_LOGO` | Override the ASCII banner logo at CLI startup. |
-| `DELEGATION_MAX_CONCURRENT_CHILDREN` | Max parallel subagents per `delegate_task` batch (default: `3`, floor of 1, no ceiling). Also configurable via `delegation.max_concurrent_children` in `config.yaml` — the config value takes priority. |
+| `DELEGATION_MAX_CONCURRENT_CHILDREN` | Max parallel subagents per `delegate_task` batch (default: `10`, floor of 1, no ceiling). Read only when no `delegation.max_concurrent_children` value is loaded: under `--ignore-user-config` or `--safe-mode`, or with the key set to `null` in `config.yaml`. Any config value, including the shipped default, takes priority. |
 
 ### HERMES_WRITE_SAFE_ROOT {#hermes_write_safe_root}
 

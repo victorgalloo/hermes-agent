@@ -6,6 +6,7 @@ _get_extract_char_limit, and the end-to-end web_extract_tool truncation behavior
 import asyncio
 import json
 import os
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -32,6 +33,14 @@ class TestImageConversion:
         assert bare == "[IMAGE]"
         paren = web_tools_truncate.convert_base64_images_to_links(f"(data:image/gif;base64,{blob})")
         assert paren == "[IMAGE]"
+
+    @pytest.mark.parametrize("marker", ["![", "data:image/"])
+    def test_unterminated_markers_are_scanned_in_linear_time(self, marker):
+        text = marker * 100_000
+        started = time.perf_counter()
+        out = web_tools_truncate.convert_base64_images_to_links(text)
+        assert time.perf_counter() - started < 1.0
+        assert out == text
 
 
 class TestTruncation:
